@@ -71,11 +71,19 @@
         <p class="form-msg" id="registerMsg"></p>
       </section>
 
-      <!-- Registered IDs overview -->
-      <section class="card hidden" id="idOverviewCard">
-        <h2>Registered IDs</h2>
-        <p class="card-sub" id="idOverviewSub">0 of 45 students registered</p>
-        <div class="id-grid" id="idGrid"></div>
+      <!-- Live picker viewer — shown after successful registration.
+           Students watch the same random-pick events the teacher
+           triggers, in real time, for as long as they stay here. -->
+      <section class="card hidden" id="watchPickerCard">
+        <h2>🎲 Random Picker</h2>
+        <p class="card-sub" id="watchPickerSub">Watching live — stay on this page to see who gets picked.</p>
+
+        <div class="picker-stage">
+          <div class="pool-count" id="watchPoolCount">Waiting for the teacher to start picking…</div>
+          <div class="picker-name-display" id="watchPickerNameDisplay">—</div>
+        </div>
+
+        <button class="btn-secondary" id="watchBackBtn">← Use a different class code</button>
       </section>
 
     </div>
@@ -144,6 +152,10 @@
           <a href="#" id="detailClassLink" target="_blank" style="font-size:12px;">copy registration link</a>
         </p>
 
+        <h2 style="margin-top:22px; font-size:15px;">Registered IDs</h2>
+        <p class="card-sub" id="idOverviewSub">0 of 45 students registered</p>
+        <div class="id-grid" id="idGrid"></div>
+
         <div class="picker-stage">
           <div class="pool-count" id="poolCount">45 students in pool</div>
           <div class="picker-name-display" id="pickerNameDisplay">Press Shuffle</div>
@@ -159,6 +171,7 @@
     </div>
 
   </main>
+
 
   <!-- ===================== FIREBASE SDKS (compat) ===================== -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
