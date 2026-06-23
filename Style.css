@@ -303,6 +303,130 @@ input.id-input {
   margin-top: 14px;
 }
 
+/* ===================== MANUAL ADD STUDENT (teacher) ===================== */
+.manual-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.manual-add-row input {
+  flex: 1;
+}
+.manual-add-row button {
+  width: auto;
+  white-space: nowrap;
+  margin-top: 0;
+}
+
+/* ===================== CLAW MACHINE ===================== */
+.claw-stage {
+  text-align: center;
+  padding: 30px 16px 10px;
+}
+
+.claw-machine {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  height: 220px;
+  margin: 10px auto 0;
+}
+
+.claw-rail {
+  position: absolute;
+  top: 0;
+  left: 6%;
+  right: 6%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.claw-arm {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  transition: left 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.claw-cable {
+  width: 2px;
+  height: 30px;
+  background: var(--text-soft);
+  transition: height 0.6s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.claw-pincer {
+  font-size: 26px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.3s ease;
+}
+.claw-pincer.open {
+  transform: rotate(90deg) scale(1.1);
+}
+
+.claw-glass {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 165px;
+  border: 2px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  background: linear-gradient(180deg, transparent 0%, var(--surface-soft) 100%);
+  overflow: hidden;
+}
+
+.emoji-pile {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.pile-emoji {
+  position: absolute;
+  font-size: 26px;
+  line-height: 1;
+  animation: pile-bounce 1.8s ease-in-out infinite;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+@keyframes pile-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.pile-emoji.grabbed {
+  animation: none;
+}
+.pile-emoji.removed {
+  opacity: 0;
+  transform: scale(0.5);
+}
+
+/* Claw lifting its catch up out of the glass and along the rail */
+.claw-arm.lifting .claw-cable { height: 6px; }
+.claw-arm.lifting .claw-pincer { transform: rotate(90deg) scale(1.15); }
+
+.claw-caught-emoji {
+  position: absolute;
+  font-size: 24px;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.2s ease, top 0.6s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.claw-caught-emoji.visible {
+  opacity: 1;
+  top: 8px;
+}
+
 .student-list {
   display: flex;
   flex-wrap: wrap;
