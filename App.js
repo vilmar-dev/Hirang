@@ -1,22 +1,15 @@
-// =====================================================
-// SMART STUDENT ID & RANDOM PICKER — MERGED APP LOGIC
-// (Combines former App.js + Picker.js into one file,
-// since both Student and Teacher sections now live on
-// the same index.html page.)
-// =====================================================
 
-// -----------------------------------------------------
-// SHARED PICKER TIMING
-// Used by both the teacher's picker button and the student's
-// live-watch view, so the animation feels consistent everywhere.
-// 38 ticks * 80ms = ~3.04 seconds, satisfying the 3-second minimum.
-// -----------------------------------------------------
+const ALLOWED_TEACHER_EMAILS = [
+  "ammasivilmar2@gmail.com"
+  // dito pwede mag add ng email para maka signup kung gusto mo ipahiram yung website 
+  //para di magamit ng iba yung website only naka register lng dito
+];
+
+
 const SHUFFLE_TICK_MS = 80;
 const SHUFFLE_TICKS = 38;
 
-// -----------------------------------------------------
-// THEME TOGGLE (shared by both Student and Teacher views)
-// -----------------------------------------------------
+
 const themeToggle = document.getElementById("themeToggle");
 
 function applyTheme(theme) {
@@ -421,6 +414,11 @@ signupForm.addEventListener("submit", async (e) => {
   const name = document.getElementById("signupName").value.trim();
   const email = document.getElementById("signupEmail").value.trim();
   const password = document.getElementById("signupPassword").value;
+
+  if (!ALLOWED_TEACHER_EMAILS.includes(email)) {
+    signupError.textContent = "This email is not authorized to create a teacher account. Contact the system administrator.";
+    return;
+  }
 
   try {
     const cred = await auth.createUserWithEmailAndPassword(email, password);
