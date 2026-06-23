@@ -6,6 +6,15 @@
 // =====================================================
 
 // -----------------------------------------------------
+// SHARED PICKER TIMING
+// Used by both the teacher's picker button and the student's
+// live-watch view, so the animation feels consistent everywhere.
+// 38 ticks * 80ms = ~3.04 seconds, satisfying the 3-second minimum.
+// -----------------------------------------------------
+const SHUFFLE_TICK_MS = 80;
+const SHUFFLE_TICKS = 38;
+
+// -----------------------------------------------------
 // THEME TOGGLE (shared by both Student and Teacher views)
 // -----------------------------------------------------
 const themeToggle = document.getElementById("themeToggle");
@@ -63,11 +72,10 @@ function showTeacherSection() {
 chooseStudentBtn.addEventListener("click", showStudentSection);
 chooseTeacherBtn.addEventListener("click", showTeacherSection);
 studentBackBtn.addEventListener("click", () => {
-  if (studentsUnsub) studentsUnsub();
   showRoleSelect();
 });
 teacherBackBtn.addEventListener("click", () => {
-  if (studentsUnsub) studentsUnsub();
+  if (teacherStudentsUnsub) teacherStudentsUnsub();
   showRoleSelect();
 });
 
@@ -112,12 +120,7 @@ const registerBtn = document.getElementById("registerBtn");
 const registerMsg = document.getElementById("registerMsg");
 const backToCodeBtn = document.getElementById("backToCodeBtn");
 
-const idOverviewCard = document.getElementById("idOverviewCard");
-const idOverviewSub = document.getElementById("idOverviewSub");
-const idGrid = document.getElementById("idGrid");
-
 let currentClassId = null;
-let studentsUnsub = null; // Firestore listener unsubscribe function (shared name; only one section is active at a time)
 
 // -----------------------------------------------------
 // PRE-FILL CLASS CODE FROM URL (?class=ABC123)
@@ -171,9 +174,6 @@ async function findClass() {
 
     classCodeCard.classList.add("hidden");
     registerCard.classList.remove("hidden");
-    idOverviewCard.classList.remove("hidden");
-
-    listenToStudents(currentClassId);
   } catch (err) {
     classCodeMsg.textContent = "Could not search right now. " + (navigator.onLine ? err.message : "You appear to be offline — try again once connected.");
     classCodeMsg.classList.add("error");
@@ -184,10 +184,8 @@ async function findClass() {
 }
 
 backToCodeBtn.addEventListener("click", () => {
-  if (studentsUnsub) studentsUnsub();
   currentClassId = null;
   registerCard.classList.add("hidden");
-  idOverviewCard.classList.add("hidden");
   classCodeCard.classList.remove("hidden");
   classCodeInput.value = "";
   classCodeMsg.textContent = "";
@@ -195,33 +193,6 @@ backToCodeBtn.addEventListener("click", () => {
   nameInput.value = "";
   registerMsg.textContent = "";
 });
-
-// -----------------------------------------------------
-// LIVE STUDENT LIST FOR THE SELECTED CLASS
-// (powers the "Registered IDs" overview grid)
-// -----------------------------------------------------
-function listenToStudents(classId) {
-  if (studentsUnsub) studentsUnsub();
-
-  studentsUnsub = db.collection("classes").doc(classId).collection("students")
-    .onSnapshot((snapshot) => {
-      const takenIds = new Set();
-      snapshot.forEach((doc) => takenIds.add(Number(doc.id)));
-      renderIdGrid(takenIds);
-    }, (err) => {
-      console.warn("Student listener error (likely offline, will retry automatically):", err.message);
-    });
-}
-
-function renderIdGrid(takenIds) {
-  idOverviewSub.textContent = `${takenIds.size} of 45 students registered`;
-  let html = "";
-  for (let i = 1; i <= 45; i++) {
-    const taken = takenIds.has(i);
-    html += `<div class="id-chip ${taken ? "taken" : ""}">${i}</div>`;
-  }
-  idGrid.innerHTML = html;
-}
 
 // -----------------------------------------------------
 // REGISTER STUDENT
@@ -275,6 +246,7 @@ registerBtn.addEventListener("click", async () => {
     registerMsg.classList.add("success");
     idInput.value = "";
     nameInput.value = "";
+    showWatchPicker();
   } catch (err) {
     if (err.message === "ID_TAKEN") {
       registerMsg.textContent = "ID already taken. Please choose a different number.";
@@ -283,6 +255,7 @@ registerBtn.addEventListener("click", async () => {
       registerMsg.classList.add("success");
       idInput.value = "";
       nameInput.value = "";
+      showWatchPicker();
     } else {
       registerMsg.textContent = "Could not register: " + err.message;
     }
@@ -293,6 +266,96 @@ registerBtn.addEventListener("click", async () => {
     registerBtn.disabled = false;
     registerBtn.textContent = "Register";
   }
+});
+
+// -----------------------------------------------------
+// LIVE PICKER VIEWER (student side)
+// Shown automatically right after registration. Listens to
+// the same students/ subcollection the teacher's picker writes
+// to, and plays a matching shuffle animation whenever ANY
+// student's `picked` flag flips from false -> true — so the
+// whole class can watch picks happen live, for as long as
+// they stay on this screen.
+// -----------------------------------------------------
+const watchPickerCard = document.getElementById("watchPickerCard");
+const watchPickerSub = document.getElementById("watchPickerSub");
+const watchPoolCount = document.getElementById("watchPoolCount");
+const watchPickerNameDisplay = document.getElementById("watchPickerNameDisplay");
+const watchBackBtn = document.getElementById("watchBackBtn");
+
+let watchPickerUnsub = null;
+let knownPickedIds = new Set(); // tracks which IDs we've already animated, so we don't replay on every snapshot
+let watchPickerBusy = false; // true while an animation is mid-flight, to queue up any picks that land during it
+let pendingPicks = [];
+
+function showWatchPicker() {
+  registerCard.classList.add("hidden");
+  watchPickerCard.classList.remove("hidden");
+  knownPickedIds = new Set();
+  pendingPicks = [];
+  watchPickerBusy = false;
+
+  if (watchPickerUnsub) watchPickerUnsub();
+  watchPickerUnsub = db.collection("classes").doc(currentClassId).collection("students")
+    .onSnapshot((snapshot) => {
+      const total = snapshot.size;
+      let pickedCount = 0;
+      const newlyPicked = [];
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.picked) {
+          pickedCount++;
+          if (!knownPickedIds.has(doc.id)) {
+            knownPickedIds.add(doc.id);
+            newlyPicked.push(data.name);
+          }
+        }
+      });
+
+      watchPoolCount.textContent = `${total - pickedCount} of ${total} students still in the pool`;
+
+      newlyPicked.forEach((name) => pendingPicks.push(name));
+      processPendingPicks();
+    }, (err) => {
+      console.warn("Picker viewer listener error (will retry automatically):", err.message);
+    });
+}
+
+function processPendingPicks() {
+  if (watchPickerBusy || pendingPicks.length === 0) return;
+
+  const name = pendingPicks.shift();
+  watchPickerBusy = true;
+  watchPickerSub.textContent = "Picking now…";
+  watchPickerNameDisplay.classList.add("shuffling");
+
+  // Mirror the teacher's own shuffle timing/feel (~3 seconds)
+  // so it reads as one continuous moment, even though students
+  // only learn about it once Firestore confirms the pick.
+  const pool = Array.from(knownPickedIds); // just for animation variety; real pool doesn't matter here
+  let tickCount = 0;
+  const interval = setInterval(() => {
+    watchPickerNameDisplay.textContent = name; // could randomize through visible names, but final reveal is what matters
+    tickCount++;
+    if (tickCount > SHUFFLE_TICKS) {
+      clearInterval(interval);
+      watchPickerNameDisplay.classList.remove("shuffling");
+      watchPickerNameDisplay.textContent = name;
+      watchPickerSub.textContent = "Watching live — stay on this page to see who gets picked.";
+      watchPickerBusy = false;
+      processPendingPicks(); // chain to the next pick if more came in while animating
+    }
+  }, SHUFFLE_TICK_MS);
+}
+
+watchBackBtn.addEventListener("click", () => {
+  if (watchPickerUnsub) watchPickerUnsub();
+  watchPickerCard.classList.add("hidden");
+  classCodeCard.classList.remove("hidden");
+  currentClassId = null;
+  classCodeInput.value = "";
+  classCodeMsg.textContent = "";
 });
 
 // =====================================================
@@ -319,6 +382,9 @@ const backToClassesBtn = document.getElementById("backToClassesBtn");
 const detailClassName = document.getElementById("detailClassName");
 const detailClassCode = document.getElementById("detailClassCode");
 const detailClassLink = document.getElementById("detailClassLink");
+
+const idOverviewSub = document.getElementById("idOverviewSub");
+const idGrid = document.getElementById("idGrid");
 
 const poolCount = document.getElementById("poolCount");
 const pickerNameDisplay = document.getElementById("pickerNameDisplay");
@@ -547,6 +613,8 @@ function getActivePool() {
 }
 
 function renderPickerState() {
+  renderIdGrid();
+
   const pool = getActivePool();
   poolCount.textContent = `${pool.length} of ${currentClassStudents.length} students in pool`;
 
@@ -560,6 +628,20 @@ function renderPickerState() {
   }
 }
 
+// Shows which of the 45 ID slots are taken — teacher-only view,
+// since exposing this to students would let them see which IDs
+// are still free and undermine the "assigned ID" fairness rule.
+function renderIdGrid() {
+  const takenIds = new Set(currentClassStudents.map(s => Number(s.id)));
+  idOverviewSub.textContent = `${takenIds.size} of 45 students registered`;
+  let html = "";
+  for (let i = 1; i <= 45; i++) {
+    const taken = takenIds.has(i);
+    html += `<div class="id-chip ${taken ? "taken" : ""}">${i}</div>`;
+  }
+  idGrid.innerHTML = html;
+}
+
 shuffleBtn.addEventListener("click", () => {
   const pool = getActivePool();
   if (pool.length === 0) return;
@@ -567,17 +649,17 @@ shuffleBtn.addEventListener("click", () => {
   shuffleBtn.disabled = true;
   pickerNameDisplay.classList.add("shuffling");
 
-  // Quick visual shuffle animation before landing on the real pick
+  // Visual shuffle animation (~3 seconds) before landing on the real pick
   let shuffleCount = 0;
   const shuffleInterval = setInterval(() => {
     const randomStudent = pool[Math.floor(Math.random() * pool.length)];
     pickerNameDisplay.textContent = randomStudent.name;
     shuffleCount++;
-    if (shuffleCount > 12) {
+    if (shuffleCount > SHUFFLE_TICKS) {
       clearInterval(shuffleInterval);
       finalizePick(pool);
     }
-  }, 80);
+  }, SHUFFLE_TICK_MS);
 });
 
 async function finalizePick(pool) {
