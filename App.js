@@ -1,15 +1,33 @@
+// =====================================================
+// SMART STUDENT ID & RANDOM PICKER — MERGED APP LOGIC
+// (Combines former App.js + Picker.js into one file,
+// since both Student and Teacher sections now live on
+// the same index.html page.)
+// =====================================================
 
+// -----------------------------------------------------
+// TEACHER EMAIL ALLOWLIST
+// Only emails listed here are allowed to create a teacher
+// account. Add the email address(es) of every teacher who
+// should have access, comma-separated.
+// -----------------------------------------------------
 const ALLOWED_TEACHER_EMAILS = [
   "ammasivilmar2@gmail.com"
-  // dito pwede mag add ng email para maka signup kung gusto mo ipahiram yung website 
-  //para di magamit ng iba yung website only naka register lng dito
+  // add more teacher emails here, comma-separated
 ];
 
-
+// -----------------------------------------------------
+// SHARED PICKER TIMING
+// Used by both the teacher's picker button and the student's
+// live-watch view, so the animation feels consistent everywhere.
+// 38 ticks * 80ms = ~3.04 seconds, satisfying the 3-second minimum.
+// -----------------------------------------------------
 const SHUFFLE_TICK_MS = 80;
 const SHUFFLE_TICKS = 38;
 
-
+// -----------------------------------------------------
+// THEME TOGGLE (shared by both Student and Teacher views)
+// -----------------------------------------------------
 const themeToggle = document.getElementById("themeToggle");
 
 function applyTheme(theme) {
@@ -265,7 +283,7 @@ registerBtn.addEventListener("click", async () => {
 // LIVE PICKER VIEWER (student side)
 // Shown automatically right after registration. Listens to
 // the same students/ subcollection the teacher's picker writes
-// to, and plays a matching shuffle animation whenever ANY
+// to, and plays the SAME claw machine animation whenever ANY
 // student's `picked` flag flips from false -> true — so the
 // whole class can watch picks happen live, for as long as
 // they stay on this screen.
@@ -276,10 +294,16 @@ const watchPoolCount = document.getElementById("watchPoolCount");
 const watchPickerNameDisplay = document.getElementById("watchPickerNameDisplay");
 const watchBackBtn = document.getElementById("watchBackBtn");
 
+const watchClawMachine = document.getElementById("watchClawMachine");
+const watchClawArm = document.getElementById("watchClawArm");
+const watchClawPincer = document.getElementById("watchClawPincer");
+const watchEmojiPile = document.getElementById("watchEmojiPile");
+
 let watchPickerUnsub = null;
 let knownPickedIds = new Set(); // tracks which IDs we've already animated, so we don't replay on every snapshot
 let watchPickerBusy = false; // true while an animation is mid-flight, to queue up any picks that land during it
 let pendingPicks = [];
+let lastKnownPoolSize = 0;
 
 function showWatchPicker() {
   registerCard.classList.add("hidden");
@@ -287,6 +311,7 @@ function showWatchPicker() {
   knownPickedIds = new Set();
   pendingPicks = [];
   watchPickerBusy = false;
+  lastKnownPoolSize = 0;
 
   if (watchPickerUnsub) watchPickerUnsub();
   watchPickerUnsub = db.collection("classes").doc(currentClassId).collection("students")
@@ -306,7 +331,15 @@ function showWatchPicker() {
         }
       });
 
-      watchPoolCount.textContent = `${total - pickedCount} of ${total} students still in the pool`;
+      const poolSize = total - pickedCount;
+      watchPoolCount.textContent = `${poolSize} of ${total} students still in the pool`;
+
+      // Only redraw the resting pile when nothing is mid-animation,
+      // so we don't yank emoji out from under an in-progress claw sequence.
+      if (!watchPickerBusy && poolSize !== lastKnownPoolSize) {
+        renderEmojiPile(watchEmojiPile, poolSize);
+      }
+      lastKnownPoolSize = poolSize;
 
       newlyPicked.forEach((name) => pendingPicks.push(name));
       processPendingPicks();
@@ -321,25 +354,18 @@ function processPendingPicks() {
   const name = pendingPicks.shift();
   watchPickerBusy = true;
   watchPickerSub.textContent = "Picking now…";
-  watchPickerNameDisplay.classList.add("shuffling");
 
-  // Mirror the teacher's own shuffle timing/feel (~3 seconds)
-  // so it reads as one continuous moment, even though students
-  // only learn about it once Firestore confirms the pick.
-  const pool = Array.from(knownPickedIds); // just for animation variety; real pool doesn't matter here
-  let tickCount = 0;
-  const interval = setInterval(() => {
-    watchPickerNameDisplay.textContent = name; // could randomize through visible names, but final reveal is what matters
-    tickCount++;
-    if (tickCount > SHUFFLE_TICKS) {
-      clearInterval(interval);
-      watchPickerNameDisplay.classList.remove("shuffling");
+  playClawSequence(
+    { machine: watchClawMachine, arm: watchClawArm, pincer: watchClawPincer, pile: watchEmojiPile, nameDisplay: watchPickerNameDisplay },
+    lastKnownPoolSize,
+    () => {
       watchPickerNameDisplay.textContent = name;
       watchPickerSub.textContent = "Watching live — stay on this page to see who gets picked.";
       watchPickerBusy = false;
+      renderEmojiPile(watchEmojiPile, lastKnownPoolSize); // refresh pile to reflect the pick that just happened
       processPendingPicks(); // chain to the next pick if more came in while animating
     }
-  }, SHUFFLE_TICK_MS);
+  );
 }
 
 watchBackBtn.addEventListener("click", () => {
@@ -384,6 +410,15 @@ const pickerNameDisplay = document.getElementById("pickerNameDisplay");
 const shuffleBtn = document.getElementById("shuffleBtn");
 const resetPoolBtn = document.getElementById("resetPoolBtn");
 const studentListDisplay = document.getElementById("studentListDisplay");
+
+const clawMachine = document.getElementById("clawMachine");
+const clawArm = document.getElementById("clawArm");
+const clawPincer = document.getElementById("clawPincer");
+const emojiPile = document.getElementById("emojiPile");
+
+const manualNameInput = document.getElementById("manualNameInput");
+const manualAddBtn = document.getElementById("manualAddBtn");
+const manualAddMsg = document.getElementById("manualAddMsg");
 
 let currentTeacherUid = null;
 let currentTeacherClassId = null; // separate from the student section's currentClassId
@@ -552,6 +587,79 @@ function generateClassCode() {
 }
 
 // -----------------------------------------------------
+// MANUALLY ADD A STUDENT (teacher-side)
+// Used for walk-ins, classes not self-registering, or quickly
+// adding a name without the student doing it themselves. Writes
+// to the SAME students/ collection as self-registration, so it's
+// indistinguishable to anyone else viewing the class — including
+// the live student-watch screen.
+// -----------------------------------------------------
+manualAddBtn.addEventListener("click", async () => {
+  manualAddMsg.textContent = "";
+  manualAddMsg.className = "form-msg";
+
+  const name = manualNameInput.value.trim();
+  if (!name) {
+    manualAddMsg.textContent = "Please enter a name.";
+    manualAddMsg.classList.add("error");
+    return;
+  }
+  if (!currentTeacherClassId) return;
+
+  manualAddBtn.disabled = true;
+
+  try {
+    // Find the lowest unused ID 1-45 from the currently loaded list.
+    const takenIds = new Set(currentClassStudents.map(s => Number(s.id)));
+    let nextId = null;
+    for (let i = 1; i <= 45; i++) {
+      if (!takenIds.has(i)) { nextId = i; break; }
+    }
+
+    if (nextId === null) {
+      manualAddMsg.textContent = "This class is full (all 45 IDs are taken).";
+      manualAddMsg.classList.add("error");
+      return;
+    }
+
+    const studentRef = db.collection("classes").doc(currentTeacherClassId)
+      .collection("students").doc(String(nextId));
+
+    // Same transaction safety as self-registration, in case a student
+    // claims this exact ID at the same moment the teacher does.
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(studentRef);
+      if (existing.exists) throw new Error("ID_TAKEN");
+      tx.set(studentRef, {
+        name: name,
+        registeredAt: firebase.firestore.FieldValue.serverTimestamp(),
+        picked: false
+      });
+    });
+
+    manualAddMsg.textContent = `Added ${name} as ID ${nextId}.`;
+    manualAddMsg.classList.add("success");
+    manualNameInput.value = "";
+  } catch (err) {
+    if (err.message === "ID_TAKEN") {
+      manualAddMsg.textContent = "That ID was just taken — please try again.";
+    } else {
+      manualAddMsg.textContent = "Could not add student: " + err.message;
+    }
+    manualAddMsg.classList.add("error");
+  } finally {
+    manualAddBtn.disabled = false;
+  }
+});
+
+manualNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    manualAddBtn.click();
+  }
+});
+
+// -----------------------------------------------------
 // OPEN CLASS DETAIL + RANDOM PICKER
 // -----------------------------------------------------
 function openClassDetail(classId) {
@@ -604,11 +712,15 @@ function listenToClassStudents(classId) {
 }
 
 // -----------------------------------------------------
-// RANDOM PICKER LOGIC
+// RANDOM PICKER LOGIC — CLAW MACHINE
 // -----------------------------------------------------
 function getActivePool() {
   return currentClassStudents.filter(s => !s.picked);
 }
+
+// A fixed set of varied emoji so the machine always looks lively
+// even with a small pool. Cycled through, not tied to student identity.
+const CLAW_EMOJI_SET = ["🐻", "🐱", "🐰", "🦊", "🐼", "🐸", "🦄", "🐯", "🐵", "🐶", "🦁", "🐨", "🐷", "🐹", "🐧"];
 
 function renderPickerState() {
   renderIdGrid();
@@ -619,6 +731,8 @@ function renderPickerState() {
   studentListDisplay.innerHTML = currentClassStudents.map(s => `
     <span class="student-tag ${s.picked ? "removed" : ""}">${escapeHtml(s.name)} (#${s.id})</span>
   `).join("");
+
+  renderEmojiPile(emojiPile, pool.length);
 
   shuffleBtn.disabled = pool.length === 0;
   if (pool.length === 0 && currentClassStudents.length > 0) {
@@ -640,24 +754,31 @@ function renderIdGrid() {
   idGrid.innerHTML = html;
 }
 
+// Renders N bouncing emoji into a pile container, spaced out
+// randomly so they look scattered inside the glass, not gridded.
+function renderEmojiPile(pileEl, count) {
+  if (!pileEl) return;
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    const emoji = CLAW_EMOJI_SET[i % CLAW_EMOJI_SET.length];
+    const left = 8 + Math.random() * 80; // % from left, kept inside the glass
+    const bottom = 6 + Math.random() * 55; // % from bottom, piled toward the base
+    const delay = (Math.random() * 1.8).toFixed(2);
+    html += `<span class="pile-emoji" data-index="${i}" style="left:${left}%; bottom:${bottom}%; animation-delay:${delay}s;">${emoji}</span>`;
+  }
+  pileEl.innerHTML = html;
+}
+
 shuffleBtn.addEventListener("click", () => {
   const pool = getActivePool();
   if (pool.length === 0) return;
 
   shuffleBtn.disabled = true;
-  pickerNameDisplay.classList.add("shuffling");
-
-  // Visual shuffle animation (~3 seconds) before landing on the real pick
-  let shuffleCount = 0;
-  const shuffleInterval = setInterval(() => {
-    const randomStudent = pool[Math.floor(Math.random() * pool.length)];
-    pickerNameDisplay.textContent = randomStudent.name;
-    shuffleCount++;
-    if (shuffleCount > SHUFFLE_TICKS) {
-      clearInterval(shuffleInterval);
-      finalizePick(pool);
-    }
-  }, SHUFFLE_TICK_MS);
+  playClawSequence(
+    { machine: clawMachine, arm: clawArm, pincer: clawPincer, pile: emojiPile, nameDisplay: pickerNameDisplay },
+    pool.length,
+    () => finalizePick(pool)
+  );
 });
 
 async function finalizePick(pool) {
@@ -665,7 +786,6 @@ async function finalizePick(pool) {
   const selectedIndex = Math.floor(Math.random() * pool.length);
   const selected = pool[selectedIndex];
 
-  pickerNameDisplay.classList.remove("shuffling");
   pickerNameDisplay.textContent = selected.name;
 
   // Mark as picked (removes from pool) in Firestore so it's
@@ -692,11 +812,67 @@ resetPoolBtn.addEventListener("click", async () => {
 
   try {
     await batch.commit();
-    pickerNameDisplay.textContent = "Press Shuffle";
+    pickerNameDisplay.textContent = "Press the button to play!";
   } catch (err) {
     alert("Could not reset pool: " + err.message);
   }
 });
+
+// -----------------------------------------------------
+// SHARED CLAW ANIMATION SEQUENCE
+// Drives the arm sliding to a random spot, dropping, "grabbing"
+// an emoji, lifting it out, and sliding back to center — timed
+// to land at or beyond SHUFFLE_TICKS * SHUFFLE_TICK_MS (~3s).
+// Calls onComplete once the visual sequence finishes, so the
+// caller can reveal the real picked name right after.
+// -----------------------------------------------------
+function playClawSequence(els, poolSize, onComplete) {
+  const { arm, pincer, pile, nameDisplay } = els;
+  const totalDurationMs = SHUFFLE_TICKS * SHUFFLE_TICK_MS; // ~3 seconds, matches existing timing elsewhere
+
+  nameDisplay.textContent = "Picking…";
+
+  // Pick a random visible emoji in the pile to "target"
+  const emojiEls = pile ? Array.from(pile.querySelectorAll(".pile-emoji")) : [];
+  const targetEl = emojiEls.length > 0 ? emojiEls[Math.floor(Math.random() * emojiEls.length)] : null;
+  const targetLeftPercent = targetEl ? parseFloat(targetEl.style.left) : 50;
+
+  // Stage 1 (0 - 35%): arm slides horizontally to the target's X position
+  arm.style.left = `${targetLeftPercent}%`;
+
+  setTimeout(() => {
+    // Stage 2 (35% - 55%): claw drops down into the glass
+    arm.classList.add("lifting");
+    const cable = arm.querySelector(".claw-cable");
+    if (cable) cable.style.height = "150px";
+    pincer.classList.remove("open");
+
+    setTimeout(() => {
+      // Stage 3 (55% - 65%): "grab" — mark the targeted emoji as caught
+      if (targetEl) {
+        targetEl.classList.add("grabbed");
+        targetEl.style.bottom = "calc(150px)"; // visually rides up with the claw
+      }
+      pincer.classList.add("open");
+
+      setTimeout(() => {
+        // Stage 4 (65% - 85%): lift back up to the rail
+        if (cable) cable.style.height = "30px";
+        if (targetEl) targetEl.classList.add("removed");
+
+        setTimeout(() => {
+          // Stage 5 (85% - 100%): slide back to center, then reveal
+          arm.classList.remove("lifting");
+          arm.style.left = "50%";
+
+          setTimeout(() => {
+            onComplete();
+          }, totalDurationMs * 0.15);
+        }, totalDurationMs * 0.2);
+      }, totalDurationMs * 0.1);
+    }, totalDurationMs * 0.2);
+  }, totalDurationMs * 0.35);
+}
 
 // =====================================================
 // SHARED UTILS
