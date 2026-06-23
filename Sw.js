@@ -9,16 +9,14 @@
 // Bump CACHE_NAME any time you update the cached files below,
 // otherwise returning users will keep seeing the old cached version.
 // =====================================================
-const CACHE_NAME = "student-id-app-v1";
+const CACHE_NAME = "student-id-app-v2";
 
 const APP_SHELL_FILES = [
   "./",
   "./index.html",
-  "./picker.html",
-  "./style.css",
-  "./app.js",
-  "./picker.js",
-  "./firebase-config.js",
+  "./Style.css",
+  "./App.js",
+  "./Firebase.js",
   "./manifest.json"
 ];
 
