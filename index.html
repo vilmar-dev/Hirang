@@ -75,11 +75,24 @@
            Students watch the same random-pick events the teacher
            triggers, in real time, for as long as they stay here. -->
       <section class="card hidden" id="watchPickerCard">
-        <h2>🎲 Random Picker</h2>
+        <h2>🕹️ Claw Machine Picker</h2>
         <p class="card-sub" id="watchPickerSub">Watching live — stay on this page to see who gets picked.</p>
 
-        <div class="picker-stage">
+        <div class="claw-stage">
           <div class="pool-count" id="watchPoolCount">Waiting for the teacher to start picking…</div>
+
+          <div class="claw-machine" id="watchClawMachine">
+            <div class="claw-rail">
+              <div class="claw-arm" id="watchClawArm">
+                <div class="claw-cable"></div>
+                <div class="claw-pincer" id="watchClawPincer">🦾</div>
+              </div>
+            </div>
+            <div class="claw-glass">
+              <div class="emoji-pile" id="watchEmojiPile"></div>
+            </div>
+          </div>
+
           <div class="picker-name-display" id="watchPickerNameDisplay">—</div>
         </div>
 
@@ -108,7 +121,7 @@
         </form>
 
         <p class="card-sub" style="margin-top:18px; text-align:center;">
-          First time? <a href="#" id="showSignup">Create a teacher account</a> 
+          First time? <a href="#" id="showSignup">Create a teacher account</a>
         </p>
 
         <form id="signupForm" class="hidden">
@@ -156,11 +169,35 @@
         <p class="card-sub" id="idOverviewSub">0 of 45 students registered</p>
         <div class="id-grid" id="idGrid"></div>
 
-        <div class="picker-stage">
+        <!-- Manually add a student (e.g. for walk-ins, or classes
+             not using self-registration). Saved to Firestore just
+             like a self-registered student, so it syncs everywhere. -->
+        <h2 style="margin-top:22px; font-size:15px;">Add Student Manually</h2>
+        <div class="manual-add-row">
+          <input type="text" id="manualNameInput" placeholder="Full name" />
+          <button class="btn-secondary" id="manualAddBtn">+ Add</button>
+        </div>
+        <p class="form-msg" id="manualAddMsg"></p>
+
+        <div class="claw-stage">
           <div class="pool-count" id="poolCount">45 students in pool</div>
-          <div class="picker-name-display" id="pickerNameDisplay">Press Shuffle</div>
+
+          <div class="claw-machine" id="clawMachine">
+            <div class="claw-rail">
+              <div class="claw-arm" id="clawArm">
+                <div class="claw-cable"></div>
+                <div class="claw-pincer" id="clawPincer">🦾</div>
+              </div>
+            </div>
+            <div class="claw-glass">
+              <div class="emoji-pile" id="emojiPile"></div>
+            </div>
+          </div>
+
+          <div class="picker-name-display" id="pickerNameDisplay">Press the button to play!</div>
+
           <div class="picker-controls">
-            <button class="btn-primary" id="shuffleBtn">🎲 Pick a Student</button>
+            <button class="btn-primary" id="shuffleBtn">🕹️ Drop the Claw</button>
             <button class="btn-secondary" id="resetPoolBtn">Reset Pool</button>
           </div>
         </div>
